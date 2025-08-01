@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Goal Planning Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Goal Planning Assistant</h1>
+        <div class="current-time" id="currentTime"></div>
+        
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        
+        <form method="POST" class="goal-form">
+            <div class="form-group">
+                <label for="goal">Your Goal:</label>
+                <input type="text" id="goal" name="goal" value="{{ goal or '' }}" required 
+                       placeholder="e.g., Learn Spanish, Run a marathon, Start a business">
+            </div>
+            
+            <div class="form-group">
+                <label for="deadline">Deadline:</label>
+                <input type="date" id="deadline" name="deadline" value="{{ deadline or '' }}" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="free_time">Daily Free Time (hours):</label>
+                <input type="number" id="free_time" name="free_time" 
+                       value="{{ free_time or '' }}" step="0.5" min="0.5" max="24" required>
+            </div>
+            
+            <button type="submit" class="submit-btn">Generate Strategy</button>
+        </form>
+        
+        {% if strategy %}
+        <div class="strategy-section">
+            <h2>Your Personalized Strategy</h2>
+            <div class="strategy-content">{{ strategy | safe }}</div>
+        </div>
+        {% endif %}
+        
+        <div class="chat-section">
+            <h2>AI Assistant</h2>
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="assistant-message">
+                        <div class="message-content">
+                            Hi! I'm your goal planning assistant. Feel free to ask me about deadlines, scheduling, or any questions about your goals!
+                        </div>
+                        <div class="message-time" id="initialTime"></div>
+                    </div>
+                </div>
+                <div class="chat-input-container">
+                    <input type="text" id="chatInput" placeholder="Ask me anything about your goals..." 
+                           maxlength="1000">
+                    <button id="sendBtn" class="send-btn">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Generate session ID
+        const sessionId = 'session_' + Math.random().toString(36).substr(2, 9);
+        
+        // Update current time display
+        function updateCurrentTime() {
+            const now = new Date();
+            const options = { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric', 
+                hour: 'numeric', 
+                minute: '2-digit',
+                hour12: true 
+            };
+            document.getElementById('currentTime').textContent = 
+                'Current time: ' + now.toLocaleDateString('en-US', options);
+        }
+        
+        // Set initial assistant message time
+        function setInitialTime() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('en-US', { 
+                hour: 'numeric', 
+                minute: '2-digit', 
+                hour12: true 
+            });
+            document.getElementById('initialTime').textContent = timeString;
+        }
+        
+        // Update time every minute
+        updateCurrentTime();
+        setInitialTime();
+        setInterval(updateCurrentTime, 60000);
+        
+        // Set minimum date to today
+        document.getElementById('deadline').min = new Date().toISOString().split('T')[0];
+        
+        // Chat functionality
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const sendBtn = document.getElementById('sendBtn');
+        
+        function addMessage(content, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = isUser ? 'user-message' : 'assistant-message';
+            
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('en-US', { 
+                hour: 'numeric', 
+                minute: '2-digit', 
+                hour12: true 
+            });
+            
+            messageDiv.innerHTML = `
+                <div class="message-content">${content}</div>
+                <div class="message-time">${timeString}</div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        function sendMessage() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+            
+            addMessage(message, true);
+            chatInput.value = '';
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Sending...';
+            
+            // Get strategy context if available
+            const strategyElement = document.querySelector('.strategy-content');
+            const strategyContext = strategyElement ? strategyElement.textContent : '';
+            const goalElement = document.querySelector('#goal');
+            const deadlineElement = document.querySelector('#deadline');
+            const freeTimeElement = document.querySelector('#free_time');
+            
+            fetch('/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: message,
+                    session_id: sessionId,
+                    strategy_context: strategyContext,
+                    goal: goalElement ? goalElement.value : '',
+                    deadline: deadlineElement ? deadlineElement.value : '',
+                    free_time: freeTimeElement ? freeTimeElement.value : ''
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    addMessage('Sorry, I encountered an error: ' + data.error);
+                } else {
+                    addMessage(data.response);
+                }
+            })
+            .catch(error => {
+                addMessage('Sorry, I encountered a connection error. Please try again.');
+            })
+            .finally(() => {
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send';
+                chatInput.focus();
+            });
+        }
+        
+        sendBtn.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
